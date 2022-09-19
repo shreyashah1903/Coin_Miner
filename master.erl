@@ -7,9 +7,10 @@ run(N) ->
   receive
     {workerReady, Worker_id} ->
       io:fwrite("Sending signal to start worker with id ~p.~n", [Worker_id]),
-      { Worker_id, ?NODE_WORKER } ! {start, N};
+      Worker_id ! {start, N};
+      % TODO: Maintain Workers list
     {result, Worker_id, Digest} ->
-      io:fwrite("Result from worker ~p : disgest : ~p~n", [Worker_id, Digest])
+      io:fwrite("Result from worker ~p : digest : ~p~n", [Worker_id, Digest])
   end,
   run(N).
 

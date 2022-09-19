@@ -1,34 +1,33 @@
 -module(worker).
 -define(NODE_SERVER, 'Node1@saturn').
--export([start/0, ping/0, mine/2, run/2]).
+-export([start/2, mine/4, run/4, ping/2]).
 
-mine(N, Worker_id) ->
+mine(Server_name, Node_name, N, Worker_id) ->
   io:format("Worker with id ~p started mining.~n", [N]),
   % If matches pattern send result to server
-  { server1, ?NODE_SERVER } ! {result, Worker_id, "123"}.
+  { Server_name, Node_name } ! {result, Worker_id, "123"}.
 
-ping() ->
+ping(Server_name, Node_name) ->
   Worker_id = self(),
-  { server1, ?NODE_SERVER } ! {workerReady, Worker_id},
+  { Server_name, Node_name } ! {workerReady, Worker_id},
   receive
     { start, N } ->
       io:format("Start the worker with id ~p.~n", [Worker_id]),
-      Run_id = spawn(worker, run, [Worker_id, N]),
-      Run_id ! {mine_coins, N, Worker_id},
-      io:format("Start done.~n", [])
+      Run_id = spawn(worker, run, [Server_name, Node_name, Worker_id, N]),
+      Run_id ! {mine_coins, N, Worker_id}
   end.
 
 
-run(Worker_id, N) ->
+run(Server_name, Node_name, Worker_id, N) ->
   receive
     { stop, Worker_id } ->
       io:format("Stop the worker with id ~p~n", [Worker_id]);
     { mine_coins, N, Worker_id} ->
       io:format("Zeroes to find ~p.~n", [N]),
-      mine(N, Worker_id),
-      run(Worker_id, N)
+      mine(Server_name, Node_name, N, Worker_id),
+      run(Server_name, Node_name, Worker_id, N)
   end.
 
-start() ->
+start(Server_name, Node_name) ->
   io:format("Worker start called~n"),
-  spawn(worker, ping, []).
+  spawn(worker, ping, [Server_name, Node_name]).
