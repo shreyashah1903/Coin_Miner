@@ -1,7 +1,7 @@
 -module(worker).
 -import(string,[equal/2]).
 -export([start/2, connect/3]).
--export([mine_coin/1, mining_process_manager/2]).
+-export([mine_coin/1, mining_process_manager/3]).
 
 
 for(0, _, Ids) ->
@@ -11,28 +11,29 @@ for(N, F, Process_Ids) ->
   for(N-1, F, Updated_process_Ids).
 
 
-initialise_processes(_, false) ->
-  ok;
-initialise_processes(N, true) ->
-  io:fwrite("Initializing processes.~n"),
-  Process_count = 100,
-  Process_ids = for(Process_count, fun() -> spawn(worker, mine_coin, [N]) end, []),
-  Process_ids.
+initialise_processes(N, Init, Processes) ->
+  if Init == true ->
+    io:fwrite("Initializing processes.~n"),
+    Process_count = 2,
+    Process_ids = for(Process_count, fun() -> spawn(worker, mine_coin, [N]) end, []),
+    Process_ids
+  ;Init == false ->
+    Processes
+  end.
 
 
-mining_process_manager(N, Init) ->
-  Process_ids = initialise_processes(N, Init),
-  io:fwrite("Processes ~p. ~n", [Process_ids]),
+mining_process_manager(N, Init, Processes) ->
+  Process_ids = initialise_processes(N, Init, Processes),
   receive
     start ->
       io:fwrite("Starting mining process.~n"),
-      _ = [Process ! mine || Process <- Process_ids];
+      _ = [Process ! mine || Process <- Process_ids],
+      mining_process_manager(N, false, Process_ids);
     terminate ->
       io:fwrite("Terminating process manager.~n"),
       _ = [Process ! terminate || Process <- Process_ids],
       io:fwrite("Process manager termination - success.~n")
-  end,
-  mining_process_manager(N, false).
+  end.
 
 
 mine_coin(N) ->

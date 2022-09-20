@@ -8,11 +8,12 @@ master_orchestrator(N, Server_name, Node_name) ->
   receive
     start ->
       register(mining_result_manager_proc, spawn(master, mining_result_manager, [[]])),
-      register(master, spawn(master, connect, [N])),
+      register(master_connect, spawn(master, connect, [N])),
       worker:start(Server_name, Node_name),
       master_orchestrator(N, Server_name, Node_name);
     terminate ->
-      mining_result_manager_proc ! terminate
+      mining_result_manager_proc ! terminate,
+      master_connect ! terminate
   end.
 
 
@@ -27,7 +28,7 @@ mining_result_manager(Curr_result) ->
       mining_result_manager(Curr_result);
     terminate ->
       io:fwrite("Terminating result manager.~n"),
-      self() ! display_results,
+      [io:fwrite("~p | ~p~n", [Key, Sha256]) || {Key, Sha256} <- Curr_result],
       io:fwrite("Result manager termination - success.~n")
   end.
 
@@ -37,10 +38,12 @@ connect(N) ->
   receive
     {workerReady, Worker_id} ->
       io:fwrite("Sending signal to start worker with id ~p.~n", [Worker_id]),
-      Worker_id ! {start, N}
+      Worker_id ! {start, N},
       % TODO: Maintain Workers list
-  end,
-  connect(N).
+    connect(N);
+    terminate ->
+      io:fwrite("Terminating master connect process")
+  end.
 
 
 start(N, Server_name, Node_name) ->
