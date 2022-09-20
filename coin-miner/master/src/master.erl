@@ -1,15 +1,16 @@
 -module(master).
--define(NODE_WORKER, 'Worker1@saturn').
--export([start/1, connect/1]).
--export([mining_result_manager/1, master_orchestrator/1]).
+-import('./../../worker/src/worker', [start/2]).
+-export([start/3, connect/1]).
+-export([mining_result_manager/1, master_orchestrator/3]).
 
 
-master_orchestrator(N) ->
+master_orchestrator(N, Server_name, Node_name) ->
   receive
     start ->
       register(mining_result_manager_proc, spawn(master, mining_result_manager, [[]])),
       register(master, spawn(master, connect, [N])),
-      master_orchestrator(N);
+      worker:start(Server_name, Node_name),
+      master_orchestrator(N, Server_name, Node_name);
     terminate ->
       mining_result_manager_proc ! terminate
   end.
@@ -26,7 +27,7 @@ mining_result_manager(Curr_result) ->
       mining_result_manager(Curr_result);
     terminate ->
       io:fwrite("Terminating result manager.~n"),
-      [io:fwrite("~p | ~p~n", [Key, Sha256]) || {Key, Sha256} <- Curr_result],
+      self() ! display_results,
       io:fwrite("Result manager termination - success.~n")
   end.
 
@@ -42,6 +43,6 @@ connect(N) ->
   connect(N).
 
 
-start(N) ->
-  register(master_orchestrator_proc, spawn(master, master_orchestrator, [N])),
+start(N, Server_name, Node_name) ->
+  register(master_orchestrator_proc, spawn(master, master_orchestrator, [N, Server_name, Node_name])),
   master_orchestrator_proc ! start.
