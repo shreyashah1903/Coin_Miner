@@ -20,6 +20,10 @@ mining_result_manager(Curr_result) ->
     {match, {Key, Sha256_digest}} ->
       Result = [{Key, Sha256_digest} | Curr_result],
       mining_result_manager(Result);
+    display_results ->
+      io:fwrite("Generated result is shown below:~n"),
+      [io:fwrite("~p | ~p~n", [Key, Sha256]) || {Key, Sha256} <- Curr_result],
+      mining_result_manager(Curr_result);
     terminate ->
       io:fwrite("Terminating result manager.~n"),
       [io:fwrite("~p | ~p~n", [Key, Sha256]) || {Key, Sha256} <- Curr_result],
