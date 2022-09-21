@@ -14,7 +14,7 @@ for(N, F, Process_Ids) ->
 initialise_processes(N, Init, Processes) ->
   if Init == true ->
     io:fwrite("Initializing processes.~n"),
-    Process_count = 2,
+    Process_count = 100,
     Process_ids = for(Process_count, fun() -> spawn(worker, mine_coin, [N]) end, []),
     Process_ids
   ;Init == false ->
@@ -47,10 +47,10 @@ mine_coin(N) ->
         nomatch ->
           continue;
         {match, _} ->
-          io:fwrite("matched~n"),
           connect_proc ! { sendResult, {Input_key, Sha256_digest}}
       end,
-      self() ! mine;
+      self() ! mine,
+      mine_coin(N);
     terminate ->
       io:fwrite("Termination of: ~p~n", [self()])
   end.
@@ -68,7 +68,6 @@ connect(Server_name, Node_name, ShouldConnect) ->
       register(mining_process_manager_proc, spawn(worker, mining_process_manager, [N, true, []])),
       mining_process_manager_proc ! start;
     { sendResult, {Input_key, Sha256_digest}} ->
-      io:format("Sending result to master ~p.~n", [Worker_id]),
       { mining_result_manager_proc, Node_name } ! {match, {Input_key, Sha256_digest}}
   end,
   connect(Server_name, Node_name, "false").
