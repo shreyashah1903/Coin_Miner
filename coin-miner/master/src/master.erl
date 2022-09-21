@@ -13,6 +13,7 @@ master_orchestrator(N, Server_name, Node_name) ->
       master_orchestrator(N, Server_name, Node_name);
     terminate ->
       mining_result_manager_proc ! terminate,
+      mining_process_manager_proc ! terminate,
       master_connect ! terminate
   end.
 
