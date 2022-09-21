@@ -47,6 +47,7 @@ mine_coin(N) ->
         nomatch ->
           continue;
         {match, _} ->
+          io:fwrite("matched~n"),
           connect_proc ! { sendResult, {Input_key, Sha256_digest}}
       end,
       self() ! mine;
@@ -64,7 +65,7 @@ connect(Server_name, Node_name, ShouldConnect) ->
   receive
     { start, N } ->
       io:format("Start the worker with id ~p.~n", [Worker_id]),
-      register(mining_process_manager_proc, spawn(worker, mining_process_manager, [N, true])),
+      register(mining_process_manager_proc, spawn(worker, mining_process_manager, [N, true, []])),
       mining_process_manager_proc ! start;
     { sendResult, {Input_key, Sha256_digest}} ->
       io:format("Sending result to master ~p.~n", [Worker_id]),
@@ -74,4 +75,6 @@ connect(Server_name, Node_name, ShouldConnect) ->
 
 
 start(Server_name, Node_name) ->
+  Connected = net_kernel:connect_node(Node_name),
+  io:fwrite("Connected: ~p~n", [Connected]),
   register(connect_proc, spawn(worker, connect, [Server_name, Node_name, "true"])).
