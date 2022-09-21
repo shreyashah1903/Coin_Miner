@@ -14,7 +14,7 @@ for(N, F, Process_Ids) ->
 initialise_processes(N, Init, Processes) ->
   if Init == true ->
     io:fwrite("Initializing processes.~n"),
-    Process_count = 100,
+    Process_count = 10,
     Process_ids = for(Process_count, fun() -> spawn(worker, mine_coin, [N]) end, []),
     Process_ids
   ;Init == false ->
