@@ -1,16 +1,16 @@
 -module(master).
 -import('./../../worker/src/worker', [start/2]).
--export([start/3, connect/1]).
--export([mining_result_manager/1, master_orchestrator/3]).
+-export([start/4, connect/5]).
+-export([mining_result_manager/1, master_orchestrator/4]).
 
 
-master_orchestrator(N, Server_name, Node_name) ->
+master_orchestrator(K, N, Server_name, Node_name) ->
   receive
     start ->
       register(mining_result_manager_proc, spawn(master, mining_result_manager, [[]])),
-      register(master_connect, spawn(master, connect, [N])),
+      register(master_connect, spawn(master, connect, [K, N, N, [], 0])),
       worker:start(Server_name, Node_name),
-      master_orchestrator(N, Server_name, Node_name);
+      master_orchestrator(K, N, Server_name, Node_name);
     terminate ->
       mining_result_manager_proc ! terminate,
       master_connect ! terminate
@@ -32,20 +32,41 @@ mining_result_manager(Curr_result) ->
       io:fwrite("Result manager termination - success.~n")
   end.
 
+assignWork(N) ->
+  MAX_WORK = 5,
+  if
+    N < MAX_WORK -> Work = N;
+    N >= MAX_WORK -> Work = MAX_WORK
+  end,
+  Work.
 
-connect(N) ->
+connect(K, Remaining_work, N, Curr_Workers, Total_work_done) ->
   io:fwrite("Master is running~n."),
+  if
+    Remaining_work =< 0 and (Total_work_done >= N) -> master_orchestrator_proc ! terminate;
+    Remaining_work =< 0 and (Total_work_done < N) -> ok;
+    Remaining_work > 0 -> ok;
+    true -> ok
+  end,
+  io:fwrite("RW: ~p, N: ~p, Total_work_done: ~p~n", [Remaining_work, N, Total_work_done]),
   receive
-    {workerReady, Worker_id} ->
+    {worker_ready, Worker_id} ->
       io:fwrite("Sending signal to start worker with id ~p.~n", [Worker_id]),
-      Worker_id ! {start, N},
-      % TODO: Maintain Workers list
-    connect(N);
+      Work = assignWork(Remaining_work),
+      Workers = [ Worker_id | Curr_Workers ],
+      Worker_id ! {start, K, Work},
+      connect(K, Remaining_work-Work, N, Workers, Total_work_done);
+    {task_completed, Worker_id, Work_done} ->
+      if
+        Remaining_work > 0 -> self() ! {worker_ready, Worker_id};
+        Remaining_work =< 0 -> ok
+      end,
+      connect(K, Remaining_work, N, Curr_Workers, Total_work_done + Work_done);
     terminate ->
       io:fwrite("Terminating master connect process")
   end.
 
 
-start(N, Server_name, Node_name) ->
-  register(master_orchestrator_proc, spawn(master, master_orchestrator, [N, Server_name, Node_name])),
+start(K, N, Server_name, Node_name) ->
+  register(master_orchestrator_proc, spawn(master, master_orchestrator, [K, N, Server_name, Node_name])),
   master_orchestrator_proc ! start.
