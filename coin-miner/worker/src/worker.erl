@@ -47,24 +47,24 @@ mine_coin(K) ->
         nomatch ->
           continue;
         {match, _} ->
-          result_counter ! {process_result, {Input_key, Sha256_digest}}
+          result_counter_proc ! {process_result, {Input_key, Sha256_digest}}
       end,
       self() ! mine,
       mine_coin(K);
     terminate ->
-      io:fwrite("Termination of: ~p~n", [self()])
+      ok
+      % io:fwrite("Termination of: ~p~n", [self()])
   end.
 
 
 result_counter(N, Curr_N) ->
   receive
     {process_result, {Input_key, Sha256_digest}} ->
+      connect_proc ! {sendResult, {Input_key, Sha256_digest}},
       if N == Curr_N + 1 ->
-        connect_proc ! {sendResult, {Input_key, Sha256_digest}},
-        connect_proc ! notify_task_completion,
+        connect_proc ! {notify_task_completion, N},
         mining_process_manager_proc ! terminate
       ;N /= Curr_N + 1 ->
-        connect_proc ! {sendResult, {Input_key, Sha256_digest}},
         result_counter(N, Curr_N + 1)
       end
   end.
@@ -78,14 +78,14 @@ connect(Server_name, Node_name, ShouldConnect) ->
   end,
   receive
     {start, K, N} ->
-      io:format("Start the worker with id ~p.~n", [Worker_id]),
+      io:format("Start the worker with K: ~p, N: ~p and id ~p.~n", [K, N, Worker_id]),
       register(mining_process_manager_proc, spawn(worker, mining_process_manager, [K, true, []])),
       register(result_counter_proc, spawn(worker, result_counter, [N, 0])),
       mining_process_manager_proc ! start;
     {sendResult, {Input_key, Sha256_digest}} ->
       {mining_result_manager_proc, Node_name} ! {match, {Input_key, Sha256_digest}};
-    notify_task_completion ->
-      {Server_name, Node_name} ! {task_completed, Worker_id}
+    {notify_task_completion, N} ->
+      {Server_name, Node_name} ! {task_completed, Worker_id, N}
   end,
   connect(Server_name, Node_name, "false").
 
