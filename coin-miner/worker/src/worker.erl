@@ -1,7 +1,7 @@
 -module(worker).
 -import(string,[equal/2]).
 -export([start/2, connect/3]).
--export([mine_coin/1, mining_process_manager/3, result_counter/2]).
+-export([mine_coin/1, mining_process_manager/4, result_counter/2]).
 
 
 for(0, _, Ids) ->
@@ -11,10 +11,11 @@ for(N, F, Process_Ids) ->
   for(N-1, F, Updated_process_Ids).
 
 
-initialise_processes(K, Init, Processes) ->
+initialise_processes(K, N, Init, Processes) ->
   if Init == true ->
     io:fwrite("Initializing processes.~n"),
-    Process_count = 10,
+    register(result_counter_proc, spawn(worker, result_counter, [N, 0])),
+    Process_count = 20,
     Process_ids = for(Process_count, fun() -> spawn(worker, mine_coin, [K]) end, []),
     Process_ids
   ;Init == false ->
@@ -22,16 +23,17 @@ initialise_processes(K, Init, Processes) ->
   end.
 
 
-mining_process_manager(K, Init, Processes) ->
-  Process_ids = initialise_processes(K, Init, Processes),
+mining_process_manager(K, N, Init, Processes) ->
+  Process_ids = initialise_processes(K, N, Init, Processes),
   receive
     start ->
       io:fwrite("Starting mining process.~n"),
       _ = [Process ! mine || Process <- Process_ids],
-      mining_process_manager(K, false, Process_ids);
+      mining_process_manager(K, N, false, Process_ids);
     terminate ->
       io:fwrite("Terminating process manager.~n"),
       _ = [Process ! terminate || Process <- Process_ids],
+      result_counter_proc ! terminate,
       io:fwrite("Process manager termination - success.~n")
   end.
 
@@ -53,44 +55,55 @@ mine_coin(K) ->
       mine_coin(K);
     terminate ->
       ok
-      % io:fwrite("Termination of: ~p~n", [self()])
   end.
 
 
 result_counter(N, Curr_N) ->
   receive
     {process_result, {Input_key, Sha256_digest}} ->
-      connect_proc ! {sendResult, {Input_key, Sha256_digest}},
-      if N == Curr_N + 1 ->
-        connect_proc ! {notify_task_completion, N},
-        mining_process_manager_proc ! terminate
-      ;N /= Curr_N + 1 ->
-        result_counter(N, Curr_N + 1)
-      end
+      if
+        Curr_N + 1 =< N ->
+          connect_proc ! {sendResult, {Input_key, Sha256_digest}},
+          if
+            Curr_N + 1 == N ->
+              connect_proc ! {notify_task_completion, N};
+            Curr_N + 1 /= N ->
+              continue
+          end,
+          result_counter(N, Curr_N + 1);
+        Curr_N + 1 > N ->
+          result_counter(N, Curr_N + 1)
+      end;
+    terminate ->
+      ok
   end.
 
+initialise_connection(Init, Server_name, Node_name, Worker_id) ->
+  if Init == true ->
+    {Server_name, Node_name} ! {worker_ready, Worker_id}
+  ;Init == false ->
+    ok
+  end.
 
-connect(Server_name, Node_name, ShouldConnect) ->
+connect(Init, Server_name, Node_name) ->
   Worker_id = self(),
-  case equal(ShouldConnect, "true") of
-    true -> {Server_name, Node_name} ! {worker_ready, Worker_id};
-    false -> ok
-  end,
+  initialise_connection(Init, Server_name, Node_name, Worker_id),
   receive
     {start, K, N} ->
-      io:format("Start the worker with K: ~p, N: ~p and id ~p.~n", [K, N, Worker_id]),
-      register(mining_process_manager_proc, spawn(worker, mining_process_manager, [K, true, []])),
-      register(result_counter_proc, spawn(worker, result_counter, [N, 0])),
+      io:format("Start worker with K: ~p, N: ~p and id ~p.~n", [K, N, Worker_id]),
+      register(mining_process_manager_proc, spawn(worker, mining_process_manager, [K, N, true, []])),
       mining_process_manager_proc ! start;
     {sendResult, {Input_key, Sha256_digest}} ->
       {mining_result_manager_proc, Node_name} ! {match, {Input_key, Sha256_digest}};
     {notify_task_completion, N} ->
+      io:fwrite("Processing task completion signal.~n"),
+      mining_process_manager_proc ! terminate,
       {Server_name, Node_name} ! {task_completed, Worker_id, N}
   end,
-  connect(Server_name, Node_name, "false").
+  connect(false, Server_name, Node_name).
 
 
 start(Server_name, Node_name) ->
   Connected = net_kernel:connect_node(Node_name),
   io:fwrite("Connected: ~p~n", [Connected]),
-  register(connect_proc, spawn(worker, connect, [Server_name, Node_name, "true"])).
+  register(connect_proc, spawn(worker, connect, [true, Server_name, Node_name])).

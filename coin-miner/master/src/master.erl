@@ -41,7 +41,7 @@ assignWork(N) ->
   Work.
 
 connect(K, Remaining_work, N, Curr_Workers, Total_work_done) ->
-  io:fwrite("Master is running~n."),
+  io:fwrite("Master is running.~n"),
   if
     Remaining_work =< 0 and (Total_work_done >= N) -> master_orchestrator_proc ! terminate;
     Remaining_work =< 0 and (Total_work_done < N) -> ok;
@@ -63,7 +63,7 @@ connect(K, Remaining_work, N, Curr_Workers, Total_work_done) ->
       end,
       connect(K, Remaining_work, N, Curr_Workers, Total_work_done + Work_done);
     terminate ->
-      io:fwrite("Terminating master connect process")
+      io:fwrite("Terminating master connect process.~n")
   end.
 
 
