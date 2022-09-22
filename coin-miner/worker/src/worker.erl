@@ -42,7 +42,9 @@ mine_coin(K) ->
   receive
     mine ->
       Random_str = binary_to_list(base64:encode(crypto:strong_rand_bytes(8))),
-      Input_key = string:concat("suriyan.subbaray;", Random_str),
+      Members = ["suriyan.subbaray;", "shah.shreya;"],
+      Random_index = rand:uniform(2),
+      Input_key = string:concat(lists:nth(Random_index, Members), Random_str),
       Sha256_digest = io_lib:format("~64.16.0b", [binary:decode_unsigned(crypto:hash(sha256, Input_key))]),
       Regex = io_lib:format("^[0]{~p}",[K]),
       case re:run(Sha256_digest, Regex) of
