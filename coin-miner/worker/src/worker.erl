@@ -100,7 +100,10 @@ connect(Init, Server_name, Node_name) ->
     {notify_task_completion, N} ->
       io:fwrite("Processing task completion signal.~n"),
       mining_process_manager_proc ! terminate,
-      {Server_name, Node_name} ! {task_completed, Worker_id, N}
+      {Server_name, Node_name} ! {task_completed, Worker_id, N};
+    shutdown ->
+      io:fwrite("Shutdown signal received for worker ~p~n.", [self()]),
+      exit(self(), normal)
   end,
   connect(false, Server_name, Node_name).
 

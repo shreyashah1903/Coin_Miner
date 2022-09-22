@@ -8,7 +8,7 @@ master_orchestrator(K, N, Server_name, Node_name) ->
   receive
     start ->
       register(mining_result_manager_proc, spawn(master, mining_result_manager, [[]])),
-      register(master_connect, spawn(master, connect, [K, N, N, [], 0])),
+      register(master_connect, spawn(master, connect, [K, N, N, sets:new(), 0])),
       worker:start(Server_name, Node_name),
       master_orchestrator(K, N, Server_name, Node_name);
     terminate ->
@@ -54,7 +54,7 @@ connect(K, Remaining_work, N, Curr_Workers, Totalwork_done) ->
     {worker_ready, Worker_id} ->
       io:fwrite("Sending signal to start worker with id ~p.~n", [Worker_id]),
       Work = assignWork(Remaining_work),
-      Workers = [ Worker_id | Curr_Workers ],
+      Workers = sets:add_element(Worker_id, Curr_Workers),
       Worker_id ! {start, K, Work},
       connect(K, Remaining_work-Work, N, Workers, Totalwork_done);
     {task_completed, Worker_id, Work_done} ->
@@ -64,7 +64,8 @@ connect(K, Remaining_work, N, Curr_Workers, Totalwork_done) ->
       end,
       connect(K, Remaining_work, N, Curr_Workers, Totalwork_done + Work_done);
     terminate ->
-      io:fwrite("Terminating master connect process.~n")
+      io:fwrite("Terminating master connect process and all worker nodes.~n"),
+      _ = [ Id ! shutdown || Id <- sets:to_list(Curr_Workers)]
   end.
 
 
