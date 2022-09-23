@@ -1,27 +1,53 @@
 -module(worker).
 -import(string,[equal/2]).
--export([start/2, connect/3]).
+-export([start/1, connection_manager/3]).
 -export([mine_coin/1, mining_process_manager/4, result_counter/2]).
 
+%%
+%% @doc for creates a given number of processes.
+%%
+%% for function executes an anonymous function, that it gets as a
+%% argument, which spawns a process. for repeats this until process_count
+%% becomes 0 and returns the process_ids of all the spawned processes.
+%%
 
-for(0, _, Ids) ->
-  Ids;
-for(N, F, Process_Ids) ->
-  Updated_process_Ids = [F() | Process_Ids],
-  for(N-1, F, Updated_process_Ids).
+for(0, _, Process_Ids) ->
+  Process_Ids;
+for(Process_count, Function, Process_Ids) ->
+  Updated_process_Ids = [Function() | Process_Ids],
+  for(Process_count - 1, Function, Updated_process_Ids).
 
+
+%%
+%% @doc initialise_processes initialises the mining processes.
+%%
+%% initialise_processes function spawns the mining processes when the worker
+%% has been assigned a work. In addition it spawns result_counter_proc that is
+%% used to keep track of the number of coins mined.
+%%
 
 initialise_processes(K, N, Init, Processes) ->
   if Init == true ->
     io:fwrite("Initializing processes.~n"),
     register(result_counter_proc, spawn(worker, result_counter, [N, 0])),
-    Process_count = 20,
+    Process_count = 15,
     Process_ids = for(Process_count, fun() -> spawn(worker, mine_coin, [K]) end, []),
     Process_ids
   ;Init == false ->
     Processes
   end.
 
+
+%%
+%% @doc mining_process_manager manages the lifecycle of the mining processes.
+%%
+%% mining_process_manager spawns the mining processes using initialise_processes
+%% when the worker is given a work.
+%% 1. When mining_process_manager receives a start signal, it starts all the
+%% mining processes that it spawned.
+%% 2. terminate signal sends termination message to each of the mining process and the
+%% result counter process.
+%%
 
 mining_process_manager(K, N, Init, Processes) ->
   Process_ids = initialise_processes(K, N, Init, Processes),
@@ -37,6 +63,17 @@ mining_process_manager(K, N, Init, Processes) ->
       io:fwrite("Process manager termination - success.~n")
   end.
 
+
+%%
+%% @doc mine_coin mines a coin and sends to result_counter.
+%%
+%% mine_coin function mines a coin in three steps. First it forms a input key to
+%% sha256 algo. It does this by generating a random string and appending it to
+%% one of the members' name. Second, it passes the above key to the sha256 algo
+%% and gets a digest a value. Finally, it matches the digest with a regex to check
+%% if the digest at least K number of zeros at the beginning. If the digest does
+%% contain at least K zeros, then it sends the match to the result counter.
+%%
 
 mine_coin(K) ->
   receive
@@ -60,25 +97,37 @@ mine_coin(K) ->
   end.
 
 
-result_counter(N, Curr_N) ->
+%%
+%% @doc result_counter keeps a count of the number of coins mined.
+%%
+%% result counter function receives mined coins from the processes.
+%% It keeps a count on the number of coins mined and sends the coin
+%% to the connection_manager_proc.
+%%
+%%
+
+result_counter(Total_coins, Coins_mined) ->
   receive
     {process_result, {Input_key, Sha256_digest}} ->
-      if
-        Curr_N + 1 =< N ->
-          connect_proc ! {sendResult, {Input_key, Sha256_digest}},
-          if
-            Curr_N + 1 == N ->
-              connect_proc ! {notify_task_completion, N};
-            Curr_N + 1 /= N ->
+      if Coins_mined + 1 =< Total_coins ->
+          connection_manager_proc ! {sendResult, {Input_key, Sha256_digest}},
+          if Coins_mined + 1 == Total_coins ->
+              connection_manager_proc ! {notify_task_completion, Total_coins}
+          ;Coins_mined + 1 /= Total_coins ->
               continue
           end,
-          result_counter(N, Curr_N + 1);
-        Curr_N + 1 > N ->
-          result_counter(N, Curr_N + 1)
+          result_counter(Total_coins, Coins_mined + 1)
+      ;Coins_mined + 1 > Total_coins ->
+          result_counter(Total_coins, Coins_mined + 1)
       end;
     terminate ->
       ok
   end.
+
+
+%%
+%% @doc initialise_connection function sends a ready signal to the master.
+%%
 
 initialise_connection(Init, Server_name, Node_name, Worker_id) ->
   if Init == true ->
@@ -87,28 +136,58 @@ initialise_connection(Init, Server_name, Node_name, Worker_id) ->
     ok
   end.
 
-connect(Init, Server_name, Node_name) ->
+%%
+%% @doc connection_manager manages sending and receiving messages to master
+%%
+%% connection_manager function starts the request to the master to join the mining
+%% system.
+%% 1. {start, K, N} - It receives a response signal with values for K (number of zeros in coin)
+%% and N (work_unit - number of coins to be mined). Then, it starts the process_manager which
+%% starts the mining processes.
+%% 2. {notify_task_completion, N} - This signal is sent by the the result_counter when
+%% the total work is completed.
+%% 3. shutdown signal is received from the master during its termination. It also prints the
+%% cpu and real time and cpu to real time ratio since the worker started.
+%%
+
+connection_manager(Init, Server_process_name, Server_node_name) ->
   Worker_id = self(),
-  initialise_connection(Init, Server_name, Node_name, Worker_id),
+  initialise_connection(Init, Server_process_name, Server_node_name, Worker_id),
   receive
     {start, K, N} ->
       io:format("Start worker with K: ~p, N: ~p and id ~p.~n", [K, N, Worker_id]),
       register(mining_process_manager_proc, spawn(worker, mining_process_manager, [K, N, true, []])),
       mining_process_manager_proc ! start;
     {sendResult, {Input_key, Sha256_digest}} ->
-      {mining_result_manager_proc, Node_name} ! {match, {Input_key, Sha256_digest}};
+      {mining_result_manager_proc, Server_node_name} ! {match, {Input_key, Sha256_digest}};
     {notify_task_completion, N} ->
       io:fwrite("Processing task completion signal.~n"),
       mining_process_manager_proc ! terminate,
-      {Server_name, Node_name} ! {task_completed, Worker_id, N};
+      {Server_process_name, Server_node_name} ! {task_completed, Worker_id, N};
     shutdown ->
-      io:fwrite("Shutdown signal received for worker ~p~n.", [self()]),
+      {_, Cpu_time_since_start} = statistics(runtime),
+      {_, Wall_time_since_start} = statistics(wall_clock),
+      io:fwrite("-----cpu time during worker end: ~p. ~n", [Cpu_time_since_start]),
+      io:fwrite("-----wall clock time during worker end: ~p. ~n", [Wall_time_since_start]),
+      io:fwrite("cpu-time to real-time :: ~p ~n", [Cpu_time_since_start/Wall_time_since_start]),
+      io:fwrite("Shutdown signal received for worker ~p.~n", [self()]),
       exit(self(), normal)
   end,
-  connect(false, Server_name, Node_name).
+  connection_manager(false, Server_process_name, Server_node_name).
 
 
-start(Server_name, Node_name) ->
-  Connected = net_kernel:connect_node(Node_name),
-  io:fwrite("Connected: ~p~n", [Connected]),
-  register(connect_proc, spawn(worker, connect, [true, Server_name, Node_name])).
+%%
+%% @doc start initializes a worker node
+%%
+%% In start function, worker node establishes a connection to the master node
+%% and spawns the connection manager process. In addition, it contains calls to
+%% statistics() function which will help getting cpu and real time when the worker ends.
+%%
+
+start(Server_node_name) ->
+  {_, _} = statistics(runtime),
+  {_, _} = statistics(wall_clock),
+  Connected = net_kernel:connect_node(Server_node_name),
+  io:fwrite("Connection result: ~p~n", [Connected]),
+  Server_process_name = worker_nodes_manager_proc,
+  register(connection_manager_proc, spawn(worker, connection_manager, [true, Server_process_name, Server_node_name])).
