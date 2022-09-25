@@ -70,6 +70,8 @@ Things you can tweak in the code to get different results:
 * MAX_WORK - Maximum work allocated to a worker.
 * Process_count - No of processes a single worker will spawn to get the result. One can increase the process count depending upon the machine's capacity.
 
+![Coin Miner Architecture Diagram](./coin-miner_arch.png)
+
 
 ### Sample Mined Coins:
 
@@ -102,9 +104,18 @@ Random Input String | Hash
 * CPU-Realtime ratio: 9.543224496701066 ms
 
 
+### Largest numbers of machines the code was run with: 2
+
+### Choosing Work unit size to get better performance:
+Master allocates the work in batches. Work unit size is defined as MAX_WORK in the code. 
+We experimented with various work unit sizes. After checking the results for values 5 and 10 string results in a batch, the results were different for both the remote and master machine. Check the result with different input values below. 
+We kept the process count constant to check with different work unit size to see the effect on performance. 
+
+There is a minor difference in CPU-to-Realtime ratio for Macbook Pro Machine but for work unit size of 5 and 10 while keeping the Process_count constant, the performance of AMD Ryzen 9 machine seems to be better for Work unit size of 10 as CPU-to-Realtime ratio increased.
+
 ### Results for different input values
 
-K | N | MAX_WORK | Process_Count | CPU Ratio for Server's Worker | CPU Ratio for remote Worker
+K | N | MAX_WORK | Process_Count | CPU Ratio for Master's Worker | CPU Ratio for remote Worker
 --- | --- | --- | --- | --- | ---
 4 | 100 | 10 | 15 | 2.21 | 9.54
 5 | 50 | 5 | 15 | 2.24 | 11.27
@@ -114,13 +125,13 @@ K | N | MAX_WORK | Process_Count | CPU Ratio for Server's Worker | CPU Ratio for
 ### Highest zero coins mined
 
 #### 7 zeroes
-Input String | Hash
+Random Input String | Hash
 --- | ---
 "suriyan.subbaray;Y7JwdMBO88E=" | "0000000e8621690851616913d794a0d938aa87dbcea13d45cb91422d66d519ed"
 "shah.shreya;SFA86zq8QAQ=" | "00000004028ffdc8ea33186610995574334a49f67df97426385e640d9caa257c"
 
 #### 8 zeroes
-Input String | Hash
+Random Input String | Hash
 --- | ---
 "suriyan.subbaray;9zsCqHEvAQY=" | "00000000333cc99f096719e807e542577ef671cae8a990e1d69f6dcb11a81acf"
-
+"shah.shreya;ANa5XMS2BCE=" | "00000000f708dc3dffdf091e47fd49c8cd356cba397d657be52ed2b17d20c600"
